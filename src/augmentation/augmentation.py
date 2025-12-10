@@ -1,12 +1,16 @@
-import cv2, numpy as np, random, glob
-from pathlib import Path
+import cv2, numpy as np, random
 
 class Augmentor:
     def __init__(self):
         self.techniques = [
-            self.flip,self.change_brightness# self.rotate, , self.add_noise
+            [self.flip, 0.4],
+            [self.change_brightness, 0.3], 
+            [self.rotate, 0.3],
+            [self.gaussian_noise, 0.1],
+            [self.salt_and_pepper_noise, 0.05]
         ]
-
+        self.height, self.width = 512, 384
+        self.center = (self.width // 2, self.height // 2)
     def flip(self, img):
         return cv2.flip(img, 1)
 
@@ -21,34 +25,49 @@ class Augmentor:
         hsb = np.array(hsb, dtype=np.uint8)
         rgb = cv2.cvtColor(hsb, cv2.COLOR_HSV2BGR)
         return rgb
+    def rotate(self, img):
+        angle = random.uniform(-30, 30)
+        if(abs(angle) < 0.1):
+            return img
+        
+        rotation_matrix = cv2.getRotationMatrix2D(self.center, angle, 1.0)
+        rotated_image = cv2.warpAffine(img, rotation_matrix, (self.height, self.width), borderMode=cv2.INTER_LINEAR)
+        return rotated_image
+    
+    def gaussian_noise(self, img, mean=0, std=15):
+        gauss = np.random.normal(mean, std, img.shape).astype(np.float32)
+        noisy = img.astype(np.float32) + gauss
+        noisy = np.clip(noisy, 0, 255).astype(np.uint8)
+        return noisy
+    
+    def salt_and_pepper_noise(self, img, amount=0.005, s_vs_p=0.5):
+        noisy = img.copy()
+        
+        num_pixels = self.height * self.width
+        
+        num_salt = int(num_pixels * amount * s_vs_p)
+        num_pepper = int(num_pixels * amount * (1 - s_vs_p))
 
+        coords = (np.random.randint(0, self.width, num_salt // 2),
+                np.random.randint(0, self.height, num_salt //2))
+        noisy[coords[0], coords[1], :] = 255
 
-    def augment_all(self):
-        working_dir = Path(__file__).parent
+        coords = (np.random.randint(0, self.width, num_pepper // 2),
+                np.random.randint(0, self.height, num_pepper // 2))
+        noisy[coords[0], coords[1], :] = 0
 
-        categories = {
-            'glass': glob.glob(str(working_dir / '../../data/raw/glass' / '*.jpg')),
-            'metal': glob.glob(str(working_dir / '../../data/raw/metal' / '*.jpg')),
-            'paper': glob.glob(str(working_dir / '../../data/raw/paper' / '*.jpg')),
-            'cardboard': glob.glob(str(working_dir / '../../data/raw/cardboard' / '*.jpg')),
-            'plastic' : glob.glob(str(working_dir / '../../data/raw/plastic' / '*.jpg')),
-            'trash' : glob.glob(str(working_dir / '../../data/raw/trash' / '*.jpg')),
-        }
+        return noisy
 
-        for category, paths in categories.items():
-            for file_path in paths:
-                img = cv2.imread(file_path)
-                if img is None: continue
-
-                img = self.flip(img)
-
-                output_name = Path(file_path).name
-                output_path = working_dir / f'../../data/processed/{category}' / output_name
-
-                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-                cv2.imwrite(str(output_path), img)
-
-
-
-augmentor = Augmentor()
-augmentor.augment_all()
+    
+    def generateSample(self, img):
+        return self.filp(img)
+    
+    def augment(self, img):
+        image_name = ""
+        for technique, prob in self.techniques:
+            if random.random() < prob and len(image_name) < 3 and (len(image_name) == 0 or image_name[-1] != 'g'):
+                img = technique(img)
+                image_name += technique.__name__[0]
+        augmented_images = [image_name, img]
+        print(f"Applied augmentations: {image_name}")
+        return augmented_images
